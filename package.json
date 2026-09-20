@@ -1,0 +1,38 @@
+{
+  "name": "oira666_pi-image-generation",
+  "version": "0.0.1",
+  "description": "Image generation and reference-image editing for pi.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gee666/pi-image-generation.git"
+  },
+  "keywords": ["pi-package", "pi-extension", "image-generation"],
+  "files": ["src", "resources", "README.md", "LICENSE"],
+  "pi": {
+    "extensions": ["./src/index.ts"],
+    "skills": []
+  },
+  "engines": { "node": ">=22" },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5",
+    "@earendil-works/pi-coding-agent": "0.86.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typebox": "^1.0.0",
+    "typescript": "^5.9.0"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "prepublishOnly": "npm run check && npm test"
+  }
+}

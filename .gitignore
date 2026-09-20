@@ -1,0 +1,7 @@
+node_modules/
+tmp/
+output/
+*.tgz
+.env
+.env.*
+auth.json

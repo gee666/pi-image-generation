@@ -5,13 +5,14 @@ import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { PNG } from "pngjs";
 import {
-  createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager,
+  createAgentSession, DefaultResourceLoader, ModelRegistry, ModelRuntime, SessionManager, SettingsManager,
   type ExtensionAPI, type ExtensionContext, type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import imageGeneration from "../src/index.ts";
 import { hasSubscription, OFF_WARNING, resolveImageAuth } from "../src/auth.ts";
 import { decodePng, requestImage } from "../src/backend.ts";
 import { imagePath, loadReferences, prepareOutput, recentReferences, saveImage } from "../src/images.ts";
+import { loadImageSettings, SETTINGS_FILE } from "../src/settings.ts";
 
 const project = resolve(import.meta.dirname, "..");
 let root: string;
@@ -48,7 +49,7 @@ after(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-function capture() {
+async function capture(overrides: Record<string, unknown> = {}) {
   const tools: ToolDefinition[] = [];
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const api = {
@@ -59,7 +60,17 @@ function capture() {
     },
   } as unknown as ExtensionAPI;
   imageGeneration(api);
-  return { tools, handlers };
+  const warnings: string[] = [];
+  const ctx = {
+    cwd: root, isProjectTrusted: () => true, hasUI: true,
+    modelRegistry: { getProviderAuthStatus: () => ({ configured: false }) },
+    ui: { notify: (message: string, level: string) => {
+      assert.equal(level, "warning"); warnings.push(message);
+    } },
+    ...overrides,
+  };
+  await handlers.get("session_start")!({}, ctx);
+  return { tools, handlers, warnings, ctx };
 }
 
 test("missing, malformed and API-key credentials register neither tool nor skill", async () => {
@@ -67,30 +78,26 @@ test("missing, malformed and API-key credentials register neither tool nor skill
     { "openai-codex": { type: "api_key", key: "fake" } }, { "openai-codex": { type: "oauth" } }]) {
     await auth(config);
     assert.equal(hasSubscription(), false);
-    const { tools, handlers } = capture();
+    const { tools, handlers, warnings, ctx } = await capture();
     assert.equal(tools.length, 0);
-    assert.equal(handlers.has("resources_discover"), false);
-    const warnings: string[] = [];
-    handlers.get("session_start")!({}, { hasUI: true, ui: { notify: (message: string, level: string) => {
-      assert.equal(level, "warning"); warnings.push(message);
-    } } });
+    assert.deepEqual(await handlers.get("resources_discover")!({}, ctx), { skillPaths: [] });
     assert.deepEqual(warnings, [OFF_WARNING]);
   }
   await writeFile(join(root, "auth.json"), "broken json");
-  assert.equal(capture().tools.length, 0);
+  assert.equal((await capture()).tools.length, 0);
 });
 
 test("OAuth registers tool and dynamically discovers skill independently of the active model", async () => {
   await auth({ "openai-codex": credential });
-  const { tools, handlers } = capture();
+  const { tools, handlers, ctx } = await capture();
   assert.equal(tools[0].name, "image_gen");
   for (const provider of ["anthropic", "google", "openai-codex"]) {
-    const resources = handlers.get("resources_discover")!({}, { model: { provider } });
+    const resources = await handlers.get("resources_discover")!({}, { ...ctx, model: { provider } });
     assert.match(resources.skillPaths[0], /resources[/\\]imagegen[/\\]SKILL.md$/);
     assert.match(await readFile(resources.skillPaths[0], "utf8"), /name: imagegen/);
   }
   await auth({});
-  assert.deepEqual(handlers.get("resources_discover")!({}, {}), { skillPaths: [] });
+  assert.deepEqual(await handlers.get("resources_discover")!({}, ctx), { skillPaths: [] });
 });
 
 test("host refresh supplies auth and persists it; extension rejects other credentials", async () => {
@@ -217,12 +224,13 @@ test("output is exclusive, PNG-only and race-safe", async () => {
 
 test("tool executes with an Anthropic context, persists the PNG and returns an image preview", async () => {
   await auth({ "openai-codex": credential });
-  const tool = capture().tools[0];
+  const tool = (await capture()).tools[0];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => imageResponse();
   try {
     const ctx = {
       cwd: root,
+      isProjectTrusted: () => true,
       model: { provider: "anthropic" },
       sessionManager: SessionManager.inMemory(root),
       modelRegistry: { getProviderAuth: async (provider: string) => {
@@ -242,12 +250,32 @@ test("tool executes with an Anthropic context, persists the PNG and returns an i
 });
 
 test("real pi package loader gates tool and skill and registers the skill command", async () => {
-  for (const enabled of [false, true]) {
-    await auth(enabled ? { "openai-codex": credential } : {});
+  for (const scenario of ["disabled", "default", "alias", "project-key"] as const) {
+    const enabled = scenario !== "disabled";
+    await auth(scenario === "default" ? { "openai-codex": credential }
+      : scenario === "alias" ? { "openai-dmitry": credential } : {});
+    if (scenario === "alias") await writeFile(join(root, SETTINGS_FILE), JSON.stringify({ provider: "openai-dmitry" }));
+    if (scenario === "project-key") {
+      await mkdir(join(root, ".pi"), { recursive: true });
+      await writeFile(join(root, ".pi", SETTINGS_FILE), JSON.stringify({ apiKey: "project-key" }));
+    }
     const settings = SettingsManager.inMemory({ packages: [project], defaultProvider: "anthropic" });
     let commands: () => { name: string }[] = () => [];
     const loader = new DefaultResourceLoader({ cwd: root, agentDir: root, settingsManager: settings,
-      extensionFactories: [pi => { commands = () => pi.getCommands(); }] });
+      extensionFactories: [pi => {
+        commands = () => pi.getCommands();
+        pi.registerProvider("openai-dmitry", {
+          baseUrl: "https://chatgpt.com/backend-api",
+          api: "openai-codex-responses",
+          models: [],
+          oauth: {
+            name: "Test Codex alias",
+            login: async () => credential,
+            refreshToken: async value => value,
+            getApiKey: value => value.access,
+          },
+        });
+      }] });
     await loader.reload();
     assert.deepEqual(loader.getExtensions().errors, []);
     assert.equal(loader.getSkills().skills.some(skill => skill.name === "imagegen"), false, "no static skill loading");
@@ -260,16 +288,25 @@ test("real pi package loader gates tool and skill and registers the skill comman
       assert.equal(session.getAllTools().some(tool => tool.name === "image_gen"), enabled);
       assert.equal(loader.getSkills().skills.some(skill => skill.name === "imagegen"), enabled);
       assert.equal(commands().some(command => command.name === "skill:imagegen"), enabled);
+      if (scenario === "alias" || scenario === "project-key") {
+        const imageAuth = await resolveImageAuth(new ModelRegistry(runtime), await loadImageSettings(root, true));
+        assert.deepEqual(imageAuth, scenario === "alias"
+          ? { accessToken: access, accountId: "test-account" } : { apiKey: "project-key" });
+      }
     } finally {
       session.dispose();
+      await rm(join(root, SETTINGS_FILE), { force: true });
+      await rm(join(root, ".pi", SETTINGS_FILE), { force: true });
     }
   }
 });
 
-test("package metadata and minimal README match requested publication", async () => {
+test("package metadata and README document installation and settings", async () => {
   const manifest = JSON.parse(await readFile(join(project, "package.json"), "utf8"));
   assert.equal(manifest.name, "oira666_pi-image-generation");
-  assert.equal(manifest.version, "0.0.1");
+  assert.equal(manifest.version, "0.0.2");
   assert.deepEqual(manifest.pi.skills, []);
-  assert.equal(await readFile(join(project, "README.md"), "utf8"), "pi install npm:oira666_pi-image-generation\n");
+  const readme = await readFile(join(project, "README.md"), "utf8");
+  assert.match(readme, /pi install npm:oira666_pi-image-generation/);
+  assert.match(readme, /pi-image-generation-settings\.json/);
 });

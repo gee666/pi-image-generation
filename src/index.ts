@@ -1,7 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
-import { resizeImage, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { hasSubscription, OFF_WARNING, resolveImageAuth } from "./auth.ts";
+import { resizeImage, type ExtensionAPI, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { hasImageAuth, offWarning, resolveImageAuth } from "./auth.ts";
+import { loadImageSettings } from "./settings.ts";
 import { IMAGE_MODEL, requestImage } from "./backend.ts";
 import { loadReferences, prepareOutput, saveImage } from "./images.ts";
 
@@ -34,23 +35,39 @@ async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
 }
 
 export default function imageGeneration(pi: ExtensionAPI): void {
-  if (!hasSubscription()) {
-    pi.on("session_start", (_event, ctx) => {
-      if (ctx.hasUI) ctx.ui.notify(OFF_WARNING, "warning");
-      else console.error(OFF_WARNING);
-    });
-    return;
-  }
+  const settingsFor = (ctx: ExtensionContext) => loadImageSettings(ctx.cwd, ctx.isProjectTrusted());
+  let registered = false;
+  // Wait for the session cwd, trust decision and custom provider registrations.
+  pi.on("session_start", async (_event, ctx) => {
+    try {
+      const settings = await settingsFor(ctx);
+      if (!hasImageAuth(settings, ctx.modelRegistry)) throw new Error(offWarning(settings));
+      if (!registered) {
+        pi.registerTool(tool);
+        registered = true;
+      }
+    } catch (error) {
+      const message = (error as Error).message;
+      if (ctx.hasUI) ctx.ui.notify(message, "warning");
+      else console.error(message);
+    }
+  });
 
-  // Not listed in the package's static skill manifest, so it cannot leak into unauthenticated sessions.
-  pi.on("resources_discover", () => ({
-    skillPaths: hasSubscription() ? [fileURLToPath(new URL("../resources/imagegen/SKILL.md", import.meta.url))] : [],
-  }));
+  // Not listed in the static manifest, so it cannot leak into unauthenticated sessions.
+  pi.on("resources_discover", async (_event, ctx) => {
+    try {
+      const settings = await settingsFor(ctx);
+      return { skillPaths: registered && hasImageAuth(settings, ctx.modelRegistry)
+        ? [fileURLToPath(new URL("../resources/imagegen/SKILL.md", import.meta.url))] : [] };
+    } catch {
+      return { skillPaths: [] };
+    }
+  });
 
-  pi.registerTool({
+  const tool: ToolDefinition<typeof parameters> = {
     name: "image_gen",
     label: "Generate image",
-    description: "Generate or edit one raster image using the configured Codex subscription. Accepts up to five local or recent-conversation reference images for consistent edits and variants. Saves a new PNG and returns a preview when possible. No API-key fallback. Reference limits: 32 MiB each, 50 MiB combined; 4-minute request timeout. Load the imagegen skill first.",
+    description: "Generate or edit one raster image using the configured OpenAI provider or API key. Accepts up to five local or recent-conversation reference images for consistent edits and variants. Saves a new PNG and returns a preview when possible. Uses openai-codex by default; credentials can be overridden in pi-image-generation-settings.json. Reference limits: 32 MiB each, 50 MiB combined; 4-minute request timeout. Load the imagegen skill first.",
     promptSnippet: "Generate images or edit them using local or recent image references",
     promptGuidelines: [
       "Before using image_gen, read the imagegen skill. Reuse reference images and state what must remain unchanged for consistent edits.",
@@ -62,11 +79,12 @@ export default function imageGeneration(pi: ExtensionAPI): void {
       const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
       requestSignal.throwIfAborted();
       if (!args.prompt.trim()) throw new Error("The image prompt must not be blank.");
-      if (!hasSubscription()) throw new Error(OFF_WARNING + " Use /login openai-codex, then /reload.");
+      const settings = await settingsFor(ctx);
+      if (!hasImageAuth(settings, ctx.modelRegistry)) throw new Error(offWarning(settings) + " Check your image generation settings and login, then /reload.");
       const path = await prepareOutput(ctx.cwd, args.output_path);
       const images = await loadReferences(args.referenced_image_paths, args.num_last_images_to_include,
         ctx.sessionManager.getBranch(), ctx.cwd, requestSignal);
-      const auth = await abortable(resolveImageAuth(ctx.modelRegistry), requestSignal);
+      const auth = await abortable(resolveImageAuth(ctx.modelRegistry, settings), requestSignal);
       onUpdate?.({ content: [{ type: "text", text: images.length ? "Editing image…" : "Generating image…" }], details: {} });
 
       let result;
@@ -109,5 +127,5 @@ export default function imageGeneration(pi: ExtensionAPI): void {
         },
       };
     },
-  });
+  };
 }

@@ -4,6 +4,7 @@ import type { ImageAuth } from "./auth.ts";
 
 export const IMAGE_MODEL = "gpt-image-2";
 const BASE_URL = "https://chatgpt.com/backend-api/codex";
+const API_BASE_URL = "https://api.openai.com/v1";
 export const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 48 * 1024 * 1024;
 
@@ -70,6 +71,23 @@ export function decodePng(base64: unknown): Buffer {
   return bytes;
 }
 
+function editForm(fields: Record<string, string>, images: string[]): FormData {
+  const form = new FormData();
+  for (const [name, value] of Object.entries(fields)) form.append(name, value);
+  for (const [index, image] of images.entries()) {
+    // loadReferences supplies bounded data URLs; never fetch a reference URL with credentials.
+    const match = /^data:(image\/(png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(image);
+    if (!match || match[3].length % 4 !== 0 || match[3].length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4) {
+      throw new Error("Reference images must be bounded PNG, JPEG, or WebP data URLs.");
+    }
+    const bytes = Buffer.from(match[3], "base64");
+    if (bytes.length > MAX_IMAGE_BYTES) throw new Error("Reference image exceeds the size limit.");
+    const extension = match[2] === "jpeg" ? "jpg" : match[2];
+    form.append("image[]", new Blob([new Uint8Array(bytes)], { type: match[1] }), `reference-${index + 1}.${extension}`);
+  }
+  return form;
+}
+
 export async function requestImage(
   auth: ImageAuth,
   request: ImageRequest,
@@ -78,28 +96,43 @@ export async function requestImage(
 ): Promise<GeneratedImage> {
   signal.throwIfAborted();
   const editing = !!request.images?.length;
+  const apiKeyAuth = "apiKey" in auth;
+  const fields = {
+    model: IMAGE_MODEL,
+    prompt: request.prompt,
+    background: "auto",
+    quality: "auto",
+    size: "auto",
+    ...(apiKeyAuth ? { output_format: "png" } : {}),
+  };
+  const headers: Record<string, string> = apiKeyAuth ? {
+    Authorization: `Bearer ${auth.apiKey}`,
+  } : {
+    Authorization: `Bearer ${auth.accessToken}`,
+    "ChatGPT-Account-ID": auth.accountId,
+    originator: "pi-image-generation",
+    "x-codex-image-turn-id": randomUUID(),
+  };
+  let requestBody: string | FormData;
+  if (apiKeyAuth && editing) {
+    requestBody = editForm(fields, request.images!);
+    // fetch supplies the multipart boundary; do not set Content-Type here.
+  } else {
+    headers["Content-Type"] = "application/json";
+    requestBody = JSON.stringify({
+      ...fields,
+      ...(editing ? { images: request.images!.map(image_url => ({ image_url })) } : {}),
+    });
+  }
   let response: Response;
   try {
-    response = await fetcher(`${BASE_URL}/images/${editing ? "edits" : "generations"}`, {
+    response = await fetcher(`${apiKeyAuth ? API_BASE_URL : BASE_URL}/images/${editing ? "edits" : "generations"}`, {
       method: "POST",
-      // Never follow a redirect with a subscription credential.
+      // Never follow a redirect with either kind of credential.
       redirect: "error",
       signal,
-      headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
-        "ChatGPT-Account-ID": auth.accountId,
-        "Content-Type": "application/json",
-        originator: "pi-image-generation",
-        "x-codex-image-turn-id": randomUUID(),
-      },
-      body: JSON.stringify({
-        model: IMAGE_MODEL,
-        prompt: request.prompt,
-        background: "auto",
-        quality: "auto",
-        size: "auto",
-        ...(editing ? { images: request.images!.map(image_url => ({ image_url })) } : {}),
-      }),
+      headers,
+      body: requestBody,
     });
   } catch {
     signal.throwIfAborted();
@@ -108,12 +141,12 @@ export async function requestImage(
 
   if (!response.ok) {
     // Do not echo upstream bodies, prompts, account IDs or auth headers into the session.
-    await response.body?.cancel();
+    await response.body?.cancel().catch(() => {});
     const hints: Record<number, string> = {
       400: "The backend rejected the image request. Check the prompt and reference images.",
-      401: "The subscription login was rejected. Use /login openai-codex, then /reload.",
+      401: "The image credential was rejected. Check your provider login or API-key settings, then /reload.",
       403: "Image generation is not permitted for this account or request.",
-      404: "The subscription image endpoint is unavailable.",
+      404: "The image endpoint is unavailable.",
       429: "The image allowance or rate limit was reached. Wait before trying again.",
     };
     throw new Error(`Image generation failed (HTTP ${response.status}). ${hints[response.status] ?? "No automatic retry was made; try again later."}`);

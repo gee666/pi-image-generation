@@ -5,7 +5,7 @@ description: Generate and edit raster images with image_gen, including photos, i
 
 # Image generation
 
-Use `image_gen` for new raster artwork, image edits, and variations. The tool is available to the current pi model regardless of its provider. It uses the configured Codex subscription for the image request; do not launch another Codex agent, request an API key, or fall back to a paid image API.
+Use `image_gen` for new raster artwork, image edits, and variations. The tool is available to the current pi model regardless of its provider. It uses the OpenAI provider or API key selected in `pi-image-generation-settings.json`, defaulting to the Codex subscription. Do not launch another Codex agent, request secrets in chat, or switch accounts or services as a fallback.
 
 ## Choose the right operation
 
@@ -110,6 +110,6 @@ Recent-image edit:
 
 ## Authentication and failures
 
-The tool and this skill load only when pi has an `openai-codex` OAuth subscription credential in its `auth.json`. Pi manages token refresh. After adding or removing that login, use `/reload` to update extension and skill registration. The active conversation model does not need to be OpenAI.
+By default, the tool and this skill load when pi has an `openai-codex` OAuth subscription login. `pi-image-generation-settings.json` in the global agent directory or trusted project `.pi` (also `.pi/agent`) directory can select another provider with `provider` or supply an OpenAI `apiKey`. Project settings override global settings. API-key requests use the paid OpenAI Images API, not the subscription backend. Pi manages provider credential resolution and OAuth refresh. After changing credentials or settings, use `/reload` to update registration. The active conversation model does not need to be OpenAI.
 
-If authentication fails, tell the user to log in with `/login openai-codex`. For rate limits, wait rather than changing providers. After a timeout or connection failure, the image request may already have consumed allowance. Do not claim a file exists unless the tool returned a saved path.
+If authentication fails, ask the user to check their configured provider login or API-key settings; never ask them to paste secrets into chat. For rate limits, wait rather than changing providers. After a timeout or connection failure, the image request may already have consumed allowance or incurred API charges. Do not claim a file exists unless the tool returned a saved path.

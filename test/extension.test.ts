@@ -304,7 +304,7 @@ test("real pi package loader gates tool and skill and registers the skill comman
 test("package metadata and README document installation and settings", async () => {
   const manifest = JSON.parse(await readFile(join(project, "package.json"), "utf8"));
   assert.equal(manifest.name, "oira666_pi-image-generation");
-  assert.equal(manifest.version, "0.0.2");
+  assert.equal(manifest.version, "0.0.3");
   assert.deepEqual(manifest.pi.skills, []);
   const readme = await readFile(join(project, "README.md"), "utf8");
   assert.match(readme, /pi install npm:oira666_pi-image-generation/);

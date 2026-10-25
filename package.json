@@ -47,6 +47,8 @@
     "check": "tsc --noEmit",
     "pretest": "npm install @earendil-works/pi-coding-agent@latest --save-dev --ignore-scripts && npm run check",
     "test": "tsx --test test/*.test.ts",
+    "test:e2e": "tsx --test test/e2e/*.test.ts",
+    "test:evergreen": "npm test && npm run test:e2e",
     "prepublishOnly": "npm run check && npm test"
   }
 }

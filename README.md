@@ -57,4 +57,12 @@ npm pack --dry-run --ignore-scripts
 
 `npm test` installs the direct Pi development dependency at `@latest` with install scripts disabled, then runs `npm run check` and the tests. Tests target only the latest npm Pi release. Before each release, update the tested version above and the Pi peer dependency baseline after all checks pass. No lint command is configured.
 
-Tests use mocked image responses and real Pi resource loaders and tool contexts. They check skill discovery, not the quality of generated artwork. They do not send live image requests or separately execute README snippets.
+Tests use mocked image responses and real Pi resource loaders and tool contexts. They protect credential isolation, skill discovery, and generate/edit workflows, not artwork quality. They do not send live image requests or separately execute README snippets.
+
+For the full Evergreen suite, including a live-model e2e run:
+
+```sh
+EVERGREEN_E2E_MODEL=provider/model npm run test:evergreen
+```
+
+E2E runs the globally installed `$EVERGREEN_PI_BIN` (default: `pi` on PATH) with stdin ignored, isolated settings and sessions, and a disposable copy of your model credentials/catalog. Model calls use `$EVERGREEN_E2E_MODEL`; image-service responses are mocked to avoid image charges. See [EVERGREEN.md](EVERGREEN.md) for intent and compatibility risks.

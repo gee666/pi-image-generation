@@ -8,30 +8,44 @@
     "type": "git",
     "url": "https://github.com/gee666/pi-image-generation.git"
   },
-  "keywords": ["pi-package", "pi-extension", "image-generation"],
-  "files": ["src", "resources", "README.md", "LICENSE"],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "image-generation"
+  ],
+  "files": [
+    "src",
+    "resources",
+    "README.md",
+    "LICENSE"
+  ],
   "pi": {
-    "extensions": ["./src/index.ts"],
+    "extensions": [
+      "./src/index.ts"
+    ],
     "skills": []
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-coding-agent": ">=1.4.0",
     "typebox": "*"
   },
   "dependencies": {
     "pngjs": "^7.0.0"
   },
   "devDependencies": {
-    "@types/pngjs": "^6.0.5",
-    "@earendil-works/pi-coding-agent": "0.86.0",
+    "@earendil-works/pi-coding-agent": "^1.4.0",
     "@types/node": "^22.0.0",
+    "@types/pngjs": "^6.0.5",
     "tsx": "^4.20.0",
     "typebox": "^1.0.0",
     "typescript": "^5.9.0"
   },
   "scripts": {
     "check": "tsc --noEmit",
+    "pretest": "npm install @earendil-works/pi-coding-agent@latest --save-dev --ignore-scripts && npm run check",
     "test": "tsx --test test/*.test.ts",
     "prepublishOnly": "npm run check && npm test"
   }

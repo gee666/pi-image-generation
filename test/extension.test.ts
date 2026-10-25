@@ -5,8 +5,9 @@ import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { PNG } from "pngjs";
 import {
-  createAgentSession, DefaultResourceLoader, ModelRegistry, ModelRuntime, SessionManager, SettingsManager,
-  type ExtensionAPI, type ExtensionContext, type ToolDefinition,
+  createAgentSession, createExtensionRuntime, DefaultResourceLoader, ExtensionRunner,
+  ModelRegistry, ModelRuntime, SessionManager, SettingsManager,
+  type ExtensionAPI, type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import imageGeneration from "../src/index.ts";
 import { hasSubscription, OFF_WARNING, resolveImageAuth } from "../src/auth.ts";
@@ -222,22 +223,17 @@ test("output is exclusive, PNG-only and race-safe", async () => {
   await assert.rejects(prepareOutput(root, "output.jpg"), /end in .png/);
 });
 
-test("tool executes with an Anthropic context, persists the PNG and returns an image preview", async () => {
+test("tool executes with Pi's tool context, persists the PNG and returns an image preview", async () => {
   await auth({ "openai-codex": credential });
   const tool = (await capture()).tools[0];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => imageResponse();
   try {
-    const ctx = {
-      cwd: root,
-      isProjectTrusted: () => true,
-      model: { provider: "anthropic" },
-      sessionManager: SessionManager.inMemory(root),
-      modelRegistry: { getProviderAuth: async (provider: string) => {
-        assert.equal(provider, "openai-codex");
-        return { auth: { apiKey: access } };
-      } },
-    } as unknown as ExtensionContext;
+    const runtime = await ModelRuntime.create({ authPath: join(root, "auth.json"), modelsPath: null,
+      modelsStorePath: join(root, "models-store.json"), allowModelNetwork: false });
+    const runner = new ExtensionRunner([], createExtensionRuntime(), root,
+      SessionManager.inMemory(root), new ModelRegistry(runtime));
+    const ctx = runner.createToolContext("test", undefined);
     const result = await tool.execute("test", { prompt: "A robot", output_path: "tool-output.png" }, undefined, undefined, ctx);
     assert.deepEqual(await readFile(join(root, "tool-output.png")), png);
     assert.ok(result.content.some(block => block.type === "image"));

@@ -17,7 +17,8 @@ trust-aware whole-file overrides (3e2d6b9), host peer dependencies (68d2aed).
 ## Pi integration (public APIs)
 The package manifest loads `src/index.ts`; the skill is discovered dynamically.
 `session_start`, `registerTool`, and `resources_discover` control availability.
-Tool schemas use TypeBox. Context supplies cwd, project trust, warnings,
+Tool schemas use TypeBox's JSON Schema subset, validated/coerced by Pi's
+pi-schema validator. Context supplies cwd, project trust, warnings,
 `modelRegistry.getProviderAuthStatus/getProviderAuth/getProvider`, and
 `sessionManager.getBranch()`. Pi owns OAuth refresh, locking, and persistence.
 Root exports `readStoredCredential`, `getAgentDir`, `CONFIG_DIR_NAME`,
@@ -57,4 +58,4 @@ until cleanup. Only image responses are mocked: no image charges or quality test
 Watch tool registration/dispatch and lifecycle ordering, resource discovery and
 skill commands, project trust/config paths, provider credential resolution and
 OAuth refresh, session branch/message formats, resizeImage, file mutation queues,
-and CLI JSON events/model selection. Tested against Pi 1.4.0.
+and CLI JSON events/model selection. Tested against Pi 1.5.0.

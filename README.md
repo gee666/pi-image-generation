@@ -1,6 +1,6 @@
 # pi-image-generation
 
-Tested against Pi 1.4.0.
+Tested against Pi 1.5.0.
 
 ```sh
 pi install npm:oira666_pi-image-generation

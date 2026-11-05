@@ -10,7 +10,7 @@ fixture.data = Buffer.from([0, 128, 255, 127]);
 const png = PNG.sync.write(fixture);
 const imageResponse = () => Response.json({ data: [{ b64_json: png.toString("base64"), generation_id: "generation-1" }] });
 const signal = () => new AbortController().signal;
-const fields = { model: "gpt-image-2", prompt, background: "auto", quality: "auto", size: "auto", output_format: "png" };
+const fields = { model: "gpt-image-2.6", prompt, background: "auto", quality: "auto", size: "auto", output_format: "png" };
 const secretPattern = /sk-SECRET-API-KEY|PRIVATE image prompt|UPSTREAM-SECRET/;
 
 function safeError(error: unknown): error is Error {

@@ -6,7 +6,7 @@ Tested against Pi 1.5.0.
 pi install npm:oira666_pi-image-generation
 ```
 
-Generate and edit PNG images with the `image_gen` tool. Without settings, the extension uses the stored `openai-codex` subscription login, as before.
+Generate and edit PNG images with GPT Image 2.6 (`gpt-image-2.6`) using the `image_gen` tool. Without settings, the extension uses the stored `openai-codex` subscription login, as before.
 
 ## Credentials
 

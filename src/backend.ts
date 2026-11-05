@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { PNG } from "pngjs";
 import type { ImageAuth } from "./auth.ts";
 
-export const IMAGE_MODEL = "gpt-image-2";
+export const IMAGE_MODEL = "gpt-image-2.6";
 const BASE_URL = "https://chatgpt.com/backend-api/codex";
 const API_BASE_URL = "https://api.openai.com/v1";
 export const MAX_IMAGE_BYTES = 32 * 1024 * 1024;

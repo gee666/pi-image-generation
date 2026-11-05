@@ -17,6 +17,7 @@ Use `image_gen` for new raster artwork, image edits, and variations. The tool is
 
 ## Tool arguments
 
+- `model`: optional, either `gpt-image-2.6-sunburst` or `gpt-image-2.6-flare`. Sunburst is the default for better quality. Flare is faster but lower quality. Use Flare only when the user explicitly asks for Flare or faster generation. Do not choose it automatically for drafts, simple images, retries, or edits, and never switch models after an error without permission.
 - `prompt`: a complete brief, up to 16,000 characters. Include exact text, reference roles, required details, and exclusions.
 - `referenced_image_paths`: one to five local PNG, JPEG, or WebP paths, in the same order used by the prompt. Relative paths use the project directory. These are uploaded to the image service for the requested edit.
 - `num_last_images_to_include`: one to five recent images from the current conversation branch. The selected images are supplied oldest first. This includes user attachments, images read by tools, and generated images. Unrelated recent images can enter this window, so explicit paths are safer for long workflows.
@@ -24,7 +25,7 @@ Use `image_gen` for new raster artwork, image edits, and variations. The tool is
 
 Choose either `referenced_image_paths` or `num_last_images_to_include`, never both. Do not pass an empty reference list. References must be at most 32 MiB each and 50 MiB combined. The tool accepts local paths, not arbitrary remote URLs.
 
-There are no separate model, size, quality, seed, mask, or batch arguments. Put framing, proportions, detail, and transparency requirements in the prompt. Do not promise exact dimensions, reproducible seeds, or pixel-perfect preservation. The backend decides the output dimensions and quality.
+There are no separate size, quality, seed, mask, or batch arguments. Put framing, proportions, detail, and transparency requirements in the prompt. Do not promise exact dimensions, reproducible seeds, or pixel-perfect preservation. The backend decides the output dimensions and quality.
 
 ## Workflow
 

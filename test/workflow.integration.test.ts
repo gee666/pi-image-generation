@@ -26,6 +26,7 @@ test("Pi dispatch preserves a generated original across recent-image edits and c
     if (calls === 1) {
       assert.equal(url, "https://api.openai.com/v1/images/generations");
       assert.equal(JSON.parse(String(init?.body)).prompt, "A transparent robot");
+      assert.equal(JSON.parse(String(init?.body)).model, "gpt-image-2.6-sunburst");
     } else {
       assert.equal(calls, 2, "no retries or fallback requests");
       assert.equal(url, "https://api.openai.com/v1/images/edits");
@@ -34,6 +35,7 @@ test("Pi dispatch preserves a generated original across recent-image edits and c
       assert.ok(reference instanceof File);
       assert.deepEqual(Buffer.from(await reference.arrayBuffer()), png);
       assert.equal(init.body.get("prompt"), "Change only the watering can to blue");
+      assert.equal(init.body.get("model"), "gpt-image-2.6-flare");
     }
     return Response.json({ data: [{ b64_json: png.toString("base64") }] });
   };
@@ -57,15 +59,20 @@ test("Pi dispatch preserves a generated original across recent-image edits and c
       await session.bindExtensions({});
       assert.ok(resourceLoader.getSkills().skills.some(skill => skill.name === "imagegen"));
       const ctx = session.extensionRunner.createToolContext("workflow", undefined);
+      const invalid = await ctx.executeTool("image_gen", { prompt: "A robot", model: "unsupported-model" });
+      assert.equal(invalid.isError, true);
+      assert.equal(calls, 0, "unsupported models must fail before upload");
       const first = await ctx.executeTool("image_gen", { prompt: "A transparent robot", output_path: "robot.png" });
       assert.equal(first.isError, false, JSON.stringify(first.result));
       assert.ok(first.result.content.some(block => block.type === "image"));
+      assert.equal(first.result.details?.model, "gpt-image-2.6-sunburst");
       assert.deepEqual(await readFile(join(root, "robot.png")), png);
       sessionManager.appendMessage({ role: "toolResult", toolCallId: "first", toolName: "image_gen", isError: false,
         content: [{ type: "image", data: "not-the-original", mimeType: "image/png" }], details: first.result.details, timestamp: 1 });
       const edited = await ctx.executeTool("image_gen", { prompt: "Change only the watering can to blue",
-        num_last_images_to_include: 1, output_path: "robot-v2.png" });
+        model: "gpt-image-2.6-flare", num_last_images_to_include: 1, output_path: "robot-v2.png" });
       assert.equal(edited.isError, false, JSON.stringify(edited.result));
+      assert.equal(edited.result.details?.model, "gpt-image-2.6-flare");
       assert.deepEqual(await readFile(join(root, "robot-v2.png")), png);
       assert.deepEqual(await readFile(join(root, "robot.png")), png);
       const collision = await ctx.executeTool("image_gen", { prompt: "Another robot", output_path: "robot.png" });

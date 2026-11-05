@@ -6,7 +6,22 @@ Tested against Pi 1.5.0.
 pi install npm:oira666_pi-image-generation
 ```
 
-Generate and edit PNG images with GPT Image 2.6 (`gpt-image-2.6`) using the `image_gen` tool. Without settings, the extension uses the stored `openai-codex` subscription login, as before.
+Generate and edit PNG images with GPT Image 2.6 using the `image_gen` tool. Without settings, the extension uses the stored `openai-codex` subscription login, as before.
+
+## Model selection
+
+Sunburst (`gpt-image-2.6-sunburst`) is the default for better quality. Flare (`gpt-image-2.6-flare`) is faster but lower quality. The agent should use Flare only when you explicitly ask for Flare or faster generation, never as an automatic fallback.
+
+The optional `model` argument applies to both generation and reference-image editing:
+
+```json
+{
+  "prompt": "A blue ceramic vase on a white background",
+  "model": "gpt-image-2.6-flare"
+}
+```
+
+Omit `model` to use Sunburst. The extension sends the full model ID instead of relying on the unspecified `gpt-image-2.6` alias.
 
 ## Credentials
 

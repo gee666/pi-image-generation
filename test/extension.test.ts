@@ -132,7 +132,7 @@ test("backend makes exactly one subscription request for generation or editing",
       assert.equal(headers.get("Authorization"), "Bearer secret");
       assert.equal(headers.get("ChatGPT-Account-ID"), "account");
       const body = JSON.parse(String(init?.body));
-      assert.equal(body.model, "gpt-image-2.6");
+      assert.equal(body.model, "gpt-image-2.6-sunburst");
       assert.equal(body.background, "auto");
       assert.deepEqual(body.images, images?.map(image_url => ({ image_url })));
       return imageResponse();

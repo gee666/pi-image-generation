@@ -3,10 +3,14 @@ import { Type } from "typebox";
 import { resizeImage, type ExtensionAPI, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { hasImageAuth, offWarning, resolveImageAuth } from "./auth.ts";
 import { loadImageSettings } from "./settings.ts";
-import { IMAGE_MODEL, requestImage } from "./backend.ts";
+import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS, requestImage, resolveImageModel } from "./backend.ts";
 import { loadReferences, prepareOutput, saveImage } from "./images.ts";
 
 const parameters = Type.Object({
+  model: Type.Optional(Type.Union([Type.Literal(IMAGE_MODELS[0]), Type.Literal(IMAGE_MODELS[1])], {
+    default: DEFAULT_IMAGE_MODEL,
+    description: "Sunburst is the default for better quality. Flare is faster but lower quality; use it only when the user explicitly asks for Flare or faster generation.",
+  })),
   prompt: Type.String({ minLength: 1, maxLength: 16000, description: "Complete image brief, including reference-image roles and details that must not change." }),
   referenced_image_paths: Type.Optional(Type.Array(Type.String({ minLength: 1 }), {
     minItems: 1, maxItems: 5, description: "Local PNG/JPEG/WebP references, in prompt order. Relative paths resolve against the project. Do not combine with num_last_images_to_include.",
@@ -67,11 +71,12 @@ export default function imageGeneration(pi: ExtensionAPI): void {
   const tool: ToolDefinition<typeof parameters> = {
     name: "image_gen",
     label: "Generate image",
-    description: "Generate or edit one raster image using the configured OpenAI provider or API key. Accepts up to five local or recent-conversation reference images for consistent edits and variants. Saves a new PNG and returns a preview when possible. Uses openai-codex by default; credentials can be overridden in pi-image-generation-settings.json. Reference limits: 32 MiB each, 50 MiB combined; 4-minute request timeout. Load the imagegen skill first.",
+    description: "Generate or edit one raster image using the configured OpenAI provider or API key. Accepts up to five local or recent-conversation reference images for consistent edits and variants. Saves a new PNG and returns a preview when possible. Defaults to GPT Image 2.6 Sunburst; Flare is faster but lower quality and only for explicit user requests. Uses openai-codex by default; credentials can be overridden in pi-image-generation-settings.json. Reference limits: 32 MiB each, 50 MiB combined; 4-minute request timeout. Load the imagegen skill first.",
     promptSnippet: "Generate images or edit them using local or recent image references",
     promptGuidelines: [
       "Before using image_gen, read the imagegen skill. Reuse reference images and state what must remain unchanged for consistent edits.",
       "Use image_gen for requested raster artwork, not SVG placeholders. Prefer native code edits for existing vector assets.",
+      "Default to Sunburst. Use Flare only when the user explicitly requests Flare or faster generation; it trades quality for speed. Never switch models automatically after an error.",
     ],
     parameters,
     async execute(_toolCallId, args, signal, onUpdate, ctx) {
@@ -79,6 +84,7 @@ export default function imageGeneration(pi: ExtensionAPI): void {
       const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
       requestSignal.throwIfAborted();
       if (!args.prompt.trim()) throw new Error("The image prompt must not be blank.");
+      const model = resolveImageModel(args.model);
       const settings = await settingsFor(ctx);
       if (!hasImageAuth(settings, ctx.modelRegistry)) throw new Error(offWarning(settings) + " Check your image generation settings and login, then /reload.");
       const path = await prepareOutput(ctx.cwd, args.output_path);
@@ -89,7 +95,7 @@ export default function imageGeneration(pi: ExtensionAPI): void {
 
       let result;
       try {
-        result = await requestImage(auth, { prompt: args.prompt, images }, requestSignal);
+        result = await requestImage(auth, { prompt: args.prompt, images, model }, requestSignal);
       } catch (error) {
         if (timeout.aborted && !signal?.aborted) {
           throw new Error("Image generation timed out after four minutes. It may still have consumed image allowance; no automatic retry was made.");
@@ -121,7 +127,7 @@ export default function imageGeneration(pi: ExtensionAPI): void {
         details: {
           savedPath,
           prompt: args.prompt,
-          model: IMAGE_MODEL,
+          model,
           operation: images.length ? "edit" : "generate",
           referenceCount: images.length,
         },

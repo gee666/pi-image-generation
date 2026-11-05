@@ -2,7 +2,15 @@ import { randomUUID } from "node:crypto";
 import { PNG } from "pngjs";
 import type { ImageAuth } from "./auth.ts";
 
-export const IMAGE_MODEL = "gpt-image-2.6";
+export const IMAGE_MODELS = ["gpt-image-2.6-sunburst", "gpt-image-2.6-flare"] as const;
+export type ImageModel = typeof IMAGE_MODELS[number];
+export const DEFAULT_IMAGE_MODEL = IMAGE_MODELS[0];
+
+export function resolveImageModel(value: unknown): ImageModel {
+  if (value === undefined) return DEFAULT_IMAGE_MODEL;
+  if (value === IMAGE_MODELS[0] || value === IMAGE_MODELS[1]) return value;
+  throw new Error("Image model must be gpt-image-2.6-sunburst or gpt-image-2.6-flare.");
+}
 const BASE_URL = "https://chatgpt.com/backend-api/codex";
 const API_BASE_URL = "https://api.openai.com/v1";
 export const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
@@ -10,6 +18,7 @@ const MAX_RESPONSE_BYTES = 48 * 1024 * 1024;
 
 export interface ImageRequest {
   prompt: string;
+  model?: ImageModel;
   images?: string[];
 }
 
@@ -98,7 +107,7 @@ export async function requestImage(
   const editing = !!request.images?.length;
   const apiKeyAuth = "apiKey" in auth;
   const fields = {
-    model: IMAGE_MODEL,
+    model: resolveImageModel(request.model),
     prompt: request.prompt,
     background: "auto",
     quality: "auto",
